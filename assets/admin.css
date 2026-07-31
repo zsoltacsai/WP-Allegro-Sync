@@ -1,0 +1,198 @@
+.fbas-wrap .fbas-grid {
+	display: grid;
+	grid-template-columns: 2fr 1fr;
+	gap: 20px;
+	margin-top: 20px;
+}
+
+.fbas-wrap .fbas-card {
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 6px;
+	padding: 20px 24px;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+}
+
+.fbas-wrap .fbas-card h2 {
+	margin-top: 0;
+}
+
+.fbas-status {
+	font-weight: 600;
+	padding: 8px 12px;
+	border-radius: 4px;
+	display: inline-block;
+}
+
+.fbas-status--ok {
+	background: #edfaef;
+	color: #1a7f37;
+}
+
+.fbas-status--warn {
+	background: #fef6e7;
+	color: #a86400;
+}
+
+.fbas-device-code {
+	margin-top: 16px;
+	padding: 16px;
+	background: #f6f7f7;
+	border-radius: 6px;
+	text-align: center;
+}
+
+.fbas-user-code {
+	font-size: 28px;
+	font-weight: 700;
+	letter-spacing: 4px;
+	background: #1d2327;
+	color: #fff;
+	padding: 10px 16px;
+	border-radius: 4px;
+	display: inline-block;
+}
+
+/* --- Kapcsoló (toggle) --- */
+.fbas-switch {
+	position: relative;
+	display: inline-block;
+	width: 42px;
+	height: 22px;
+}
+
+.fbas-switch input {
+	opacity: 0;
+	width: 0;
+	height: 0;
+}
+
+.fbas-slider {
+	position: absolute;
+	cursor: pointer;
+	inset: 0;
+	background-color: #c3c4c7;
+	transition: 0.2s;
+	border-radius: 22px;
+}
+
+.fbas-slider::before {
+	position: absolute;
+	content: "";
+	height: 16px;
+	width: 16px;
+	left: 3px;
+	bottom: 3px;
+	background-color: #fff;
+	transition: 0.2s;
+	border-radius: 50%;
+}
+
+.fbas-switch input:checked + .fbas-slider {
+	background-color: #2271b1;
+}
+
+.fbas-switch input:checked + .fbas-slider::before {
+	transform: translateX(20px);
+}
+
+/* --- Badge / státusz jelölők --- */
+.fbas-badge {
+	display: inline-block;
+	padding: 2px 10px;
+	border-radius: 12px;
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+}
+
+.fbas-badge--success {
+	background: #edfaef;
+	color: #1a7f37;
+}
+
+.fbas-badge--error {
+	background: #fcedee;
+	color: #b32d2e;
+}
+
+.fbas-badge--warning {
+	background: #fef6e7;
+	color: #a86400;
+}
+
+.fbas-badge--info {
+	background: #e7f1fb;
+	color: #1d5490;
+}
+
+.fbas-badge--muted {
+	background: #f0f0f1;
+	color: #646970;
+}
+
+.fbas-error-text {
+	color: #b32d2e;
+}
+
+.fbas-raw-context {
+	background: #1d2327;
+	color: #c3c4c7;
+	padding: 10px;
+	border-radius: 4px;
+	max-width: 100%;
+	overflow-x: auto;
+	font-size: 12px;
+	margin-top: 6px;
+}
+
+.fbas-pagination {
+	margin-top: 16px;
+}
+
+.fbas-search-form {
+	margin-bottom: 12px;
+}
+
+/* --- Kategória / szállítás / garancia / visszaküldés kereső-lekérdező --- */
+.fbas-lookup {
+	margin-top: 8px;
+	padding: 10px 12px;
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+	border-radius: 4px;
+	max-width: 480px;
+}
+
+.fbas-lookup .fbas-lookup-query {
+	width: 60%;
+}
+
+.fbas-lookup-results {
+	list-style: none;
+	margin: 8px 0 0;
+	padding: 0;
+	max-height: 220px;
+	overflow-y: auto;
+}
+
+.fbas-lookup-item {
+	padding: 6px 8px;
+	border-bottom: 1px solid #e0e0e0;
+	cursor: pointer;
+	font-size: 13px;
+}
+
+.fbas-lookup-item:hover {
+	background: #e7f1fb;
+}
+
+.fbas-lookup-item:last-child {
+	border-bottom: none;
+}
+
+.fbas-lookup-empty {
+	padding: 6px 8px;
+	color: #646970;
+	font-style: italic;
+}
