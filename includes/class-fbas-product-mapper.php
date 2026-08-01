@@ -127,41 +127,146 @@ class FBAS_Product_Mapper {
 	}
 
 	/**
-	 * Allegro "sale/offers" POST/PUT törzs összeállítása a termékből.
+	 * Az Allegro ajánlat-leírás mezője (description.sections[].items[].content)
+	 * NAGYON szűk HTML alkészletet enged - a valóságban tapasztaltak szerint
+	 * gyakorlatilag csak <p> és <b> (a <br> kifejezetten TILOS, "Invalid tag:
+	 * br, allowed tags: {b}" hibát ad rá). A WordPress `wpautop()` viszont
+	 * soronkénti töréseknél <br>-t generál - ezt itt eltávolítjuk / a
+	 * kiemeléseket <b>-re alakítjuk, minden mást (span, div, img, a, ul stb.)
+	 * pedig egyszerű szövegre bontunk, hogy garantáltan megfeleljen az
+	 * Allegro validációjának.
+	 *
+	 * @param string $raw_html A WooCommerce termékleírás nyers (esetleg HTML-t
+	 *                          tartalmazó) szövege.
+	 * @return string Allegro-kompatibilis, csak <p>/<b> tageket tartalmazó HTML.
+	 */
+	public static function sanitize_offer_description( $raw_html ) {
+		// Először a WordPress wpautop()-jával alakítjuk bekezdésekké / <br>-ekké
+		// a nyers szöveget - ez adja az alap struktúrát, amit utána szűkítünk.
+		$html = wpautop( (string) $raw_html );
+
+		// Kiemelések egységesítése <b>-re, mielőtt mindent kiszűrnénk.
+		$html = preg_replace( '/<\s*strong([^>]*)>/i', '<b>', $html );
+		$html = preg_replace( '/<\s*\/\s*strong\s*>/i', '</b>', $html );
+
+		// A wpautop() <br>-t tesz a soron belüli törésekhez - az Allegro ezt
+		// nem engedi meg a leírás mezőben, ezért szóközzé alakítjuk.
+		$html = preg_replace( '/<br\s*\/?>/i', ' ', $html );
+
+		// Blokk szintű elemek (div, li, h1-6 stb.) tartalmát bekezdéssé alakítjuk,
+		// mielőtt a nem engedélyezett tageket eltávolítanánk - így nem folyik
+		// egybe a szöveg.
+		$html = preg_replace( '/<\s*\/\s*(div|li|h[1-6]|blockquote)\s*>/i', '</p><p>', $html );
+
+		// Csak <p> és <b> tagek maradhatnak, mindenféle attribútum nélkül
+		// (az Allegro a class/style stb. attribútumokat sem engedi).
+		$clean = wp_kses( $html, array(
+			'p' => array(),
+			'b' => array(),
+		) );
+
+		// Dupla / üres <p></p> elemek és felesleges whitespace eltávolítása.
+		$clean = preg_replace( '/<p>\s*<\/p>/', '', $clean );
+		$clean = preg_replace( '/\s+/', ' ', $clean );
+		$clean = trim( $clean );
+
+		return $clean;
+	}
+
+	/**
+	 * Az Allegro ajánlat/termék cím karakterkorlátjához igazítja a szöveget.
+	 * Az Allegro jelenlegi limitje 75 karakter (2023 óta, korábban 50 volt) -
+	 * ha a WooCommerce termék neve ennél hosszabb, "Nazwa produktu nie może
+	 * być dłuższa niż 75 znaków." hibát ad. Ékezetes (UTF-8) karakterekre is
+	 * biztonságos (mb_ függvényeket használ), és lehetőség szerint szóhatáron
+	 * vág, hogy ne csonkoljon szót félbe.
+	 *
+	 * @param string $title
+	 * @param int    $max_length Alapértelmezetten 75 - az Allegro jelenlegi limitje.
+	 * @return string
+	 */
+	public static function truncate_offer_title( $title, $max_length = 75 ) {
+		$title = trim( wp_strip_all_tags( (string) $title ) );
+
+		if ( mb_strlen( $title ) <= $max_length ) {
+			return $title;
+		}
+
+		$truncated = mb_substr( $title, 0, $max_length );
+
+		// Ha van szóköz az utolsó ~15 karakteren belül, ott vágjuk el, hogy ne
+		// csonkoljon szót félbe - de csak ha ez nem rövidíti túl agresszívan.
+		$last_space = mb_strrpos( $truncated, ' ' );
+		if ( false !== $last_space && $last_space >= ( $max_length - 15 ) ) {
+			$truncated = mb_substr( $truncated, 0, $last_space );
+		}
+
+		return trim( $truncated );
+	}
+
+	/**
+	 * Allegro "sale/product-offers" POST/PATCH törzs összeállítása a termékből.
+	 *
+	 * FONTOS: 2024 eleje óta a régi `/sale/offers` végpont teljesen le van
+	 * tiltva ajánlat létrehozásra/szerkesztésre - a jelenleg támogatott,
+	 * egyetlen út a `/sale/product-offers`. Ennek eltérő a sémája a régihez
+	 * képest: a termékadatok (név, kategória, kép, paraméterek) a
+	 * `productSet[0].product` alá kerülnek, a garancia/visszaküldés az
+	 * `afterSalesServices` objektumba, és a `publication.status = ACTIVE`
+	 * beállításával egy lépésben, azonnal publikált ajánlat jön létre -
+	 * nincs többé szükség külön draft + publikáló parancs lépésre.
+	 * Doksi: https://developer.allegro.pl/tutorials/jak-jednym-requestem-wystawic-oferte-powiazana-z-produktem-D7Kj9gw4xFA
 	 *
 	 * @param WC_Product $product
 	 * @param string[]   $allegro_image_urls Az Allegro szerverére MÁR feltöltött kép URL-ek
 	 *                                        (FBAS_Api_Client::upload_image_from_url() eredménye).
-	 *                                        Az Allegro nem fogadja el a külső URL-eket közvetlenül.
-	 *
-	 * Megjegyzés: az Allegro kategória-specifikus paramétereket
-	 * (pl. márka, méret stb.) a kategória "requiredForOffer" paraméterei
-	 * alapján kellene automatikusan feltölteni - ez a plugin ehhez a
-	 * `fbas_offer_parameters` szűrőn keresztül biztosít bővítési pontot,
-	 * mivel Allegro kategóriánként eltérő kötelező mezőket kér.
 	 */
 	public static function build_offer_payload( WC_Product $product, array $allegro_image_urls = array() ) {
 		$settings = FBAS_Settings::get_all();
 
-		$images = array();
-		foreach ( $allegro_image_urls as $url ) {
-			$images[] = array( 'url' => $url );
-		}
+		$description_html = self::sanitize_offer_description(
+			$product->get_description() ?: $product->get_short_description()
+		);
 
-		$description_html = wpautop( $product->get_description() ?: $product->get_short_description() );
+		// Az Allegro ajánlat/termék cím maximum 75 karakter lehet (2023 óta ez a limit).
+		$offer_title = self::truncate_offer_title( $product->get_name() );
 
 		$stock_qty = $product->managing_stock() ? (int) $product->get_stock_quantity() : 1;
 		if ( ! $product->is_in_stock() ) {
 			$stock_qty = 0;
 		}
 
-		$payload = array(
-			'name'     => $product->get_name(),
-			'category' => array(
-				'id' => (string) $settings['offer_category_id'],
-			),
+		// A termék/katalógus szintű paraméterek (pl. márka, anyag, EAN) - kategóriánként eltérő
+		// kötelező mezők, a `fbas_offer_parameters` szűrőn keresztül bővíthető.
+		$product_node = array(
+			'name'       => $offer_title,
+			'category'   => array( 'id' => (string) $settings['offer_category_id'] ),
 			'parameters' => apply_filters( 'fbas_offer_parameters', array(), $product ),
-			'images'     => $images,
+			'images'     => $allegro_image_urls,
+		);
+
+		// Az ajánlat-szintű paraméterek (leggyakrabban "Állapot/Condition") -
+		// a legtöbb kategóriában kötelező, de az ID kategóriánként más, ezért
+		// külön szűrőn keresztül állítható be, alapból üres.
+		$offer_level_parameters = apply_filters( 'fbas_offer_state_parameters', array(), $product );
+
+		$after_sales_services = array_filter( array(
+			'warranty'        => $settings['default_warranty_id'] ? array( 'id' => (string) $settings['default_warranty_id'] ) : null,
+			'returnPolicy'    => $settings['default_return_id'] ? array( 'id' => (string) $settings['default_return_id'] ) : null,
+		), function ( $value ) {
+			return null !== $value;
+		} );
+
+		$payload = array(
+			'name'       => $offer_title,
+			'productSet' => array(
+				array(
+					'product'  => $product_node,
+					'quantity' => array( 'value' => 1 ),
+				),
+			),
+			'parameters'  => $offer_level_parameters,
+			'images'      => $allegro_image_urls,
 			'description' => array(
 				'sections' => array(
 					array(
@@ -185,21 +290,23 @@ class FBAS_Product_Mapper {
 				'available' => $stock_qty,
 				'unit'      => 'UNIT',
 			),
+			// ACTIVE = azonnal publikált ajánlat egyetlen kéréssel (nincs külön "publikálás" lépés).
 			'publication' => array(
-				'duration' => 'PT0S', // "amíg el nem fogy" jellegű, végtelenített ajánlat
-				'status'   => 'INACTIVE', // draft - a publikálás külön lépés (lásd FBAS_Api_Client + publish command)
+				'status' => 'ACTIVE',
 			),
 			'delivery' => array(
 				'shippingRates' => array(
 					'id' => (string) $settings['default_delivery_id'],
 				),
 			),
-			'warranty'  => $settings['default_warranty_id'] ? array( 'id' => (string) $settings['default_warranty_id'] ) : null,
-			'returnPolicy' => $settings['default_return_id'] ? array( 'id' => (string) $settings['default_return_id'] ) : null,
 			'external' => array(
 				'id' => (string) $product->get_id(), // saját azonosító - visszakereshetőség
 			),
 		);
+
+		if ( ! empty( $after_sales_services ) ) {
+			$payload['afterSalesServices'] = $after_sales_services;
+		}
 
 		// Null értékű kulcsok eltávolítása (Allegro API nem szereti az explicit null mezőket mindenhol).
 		return array_filter( $payload, function ( $value ) {

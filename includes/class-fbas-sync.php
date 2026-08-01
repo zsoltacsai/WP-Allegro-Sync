@@ -144,7 +144,7 @@ class FBAS_Sync {
 		if ( $offer_id && $price_stock_only ) {
 			// Ár/készlet gyorsfrissítéshez nincs szükség a képek újra-feltöltésére.
 			$patch  = FBAS_Product_Mapper::build_price_stock_patch( $product );
-			$result = $client->patch( '/sale/offers/' . $offer_id, $patch );
+			$result = $client->patch( '/sale/product-offers/' . $offer_id, $patch );
 		} else {
 			$hosted_image_urls = $this->resolve_image_urls( $product_id, $product );
 
@@ -157,14 +157,16 @@ class FBAS_Sync {
 			$payload = FBAS_Product_Mapper::build_offer_payload( $product, $hosted_image_urls );
 
 			if ( $offer_id ) {
-				$result = $client->put( '/sale/offers/' . $offer_id, $payload );
+				// A modern /sale/product-offers végponton a frissítés is PATCH (nem PUT).
+				$result = $client->patch( '/sale/product-offers/' . $offer_id, $payload );
 			} else {
-				$result = $client->post( '/sale/offers', $payload );
+				// Egyetlen kéréssel létrejön ÉS publikálódik is az ajánlat (publication.status = ACTIVE a payloadban),
+				// nincs többé szükség külön "publikálás" API hívásra, mint a régi /sale/offers végpontnál.
+				$result = $client->post( '/sale/product-offers', $payload );
 
 				if ( ! is_wp_error( $result ) && ! empty( $result['id'] ) ) {
 					FBAS_Product_Mapper::set_offer_id( $product_id, $result['id'] );
 					$offer_id = $result['id'];
-					$this->publish_offer( $offer_id );
 				}
 			}
 		}
@@ -182,31 +184,13 @@ class FBAS_Sync {
 	}
 
 	/**
-	 * Új ajánlat publikálása (draft -> ACTIVE) a publikációs parancs végponton keresztül.
-	 */
-	private function publish_offer( $offer_id ) {
-		$client = FBAS_Api_Client::instance();
-		$command_id = wp_generate_uuid4();
-
-		$result = $client->put( '/sale/offer-publication-commands/' . $command_id, array(
-			'publication' => array( 'action' => 'ACTIVATE' ),
-			'offerCriteria' => array(
-				array(
-					'offers' => array( array( 'id' => $offer_id ) ),
-					'type'   => 'CONTAINS_OFFERS',
-				),
-			),
-		) );
-
-		if ( is_wp_error( $result ) ) {
-			FBAS_Logger::log( 'Ajánlat publikálása sikertelen (offer: ' . $offer_id . '): ' . $result->get_error_message(), 'error' );
-		}
-
-		return $result;
-	}
-
-	/**
-	 * Termék törlése az Allegro-ról (ajánlat befejezése).
+	 * Termék "eltávolítása" az Allegro-ról - az ajánlat lezárása.
+	 *
+	 * FONTOS: a DELETE /sale/offers/{offerId} végpont is le lett tiltva a
+	 * /sale/offers eltávolításával együtt (403 ACCESS_DENIED-et ad).
+	 * A jelenleg támogatott mód egy aktív ajánlat befejezésére a
+	 * PATCH /sale/product-offers/{offerId} hívás publication.status = "ENDED"
+	 * értékkel.
 	 */
 	public function remove_offer( $product_id ) {
 		$offer_id = FBAS_Product_Mapper::get_offer_id( $product_id );
@@ -215,7 +199,9 @@ class FBAS_Sync {
 		}
 
 		$client = FBAS_Api_Client::instance();
-		$result = $client->delete( '/sale/offers/' . $offer_id );
+		$result = $client->patch( '/sale/product-offers/' . $offer_id, array(
+			'publication' => array( 'status' => 'ENDED' ),
+		) );
 
 		if ( ! is_wp_error( $result ) ) {
 			FBAS_Product_Mapper::set_offer_id( $product_id, '' );
