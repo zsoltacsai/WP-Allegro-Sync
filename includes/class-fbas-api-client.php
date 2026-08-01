@@ -38,7 +38,7 @@ class FBAS_Api_Client {
 		$settings = FBAS_Settings::get_all();
 
 		if ( empty( $settings['client_id'] ) || empty( $settings['client_secret'] ) ) {
-			return new WP_Error( 'fbas_missing_credentials', __( 'Hiányzó Client ID / Client Secret. Add meg a beállításokban.', 'fb-allegro-sync' ) );
+			return new WP_Error( 'fbas_missing_credentials', __( 'Hiányzó Client ID / Client Secret. Add meg a beállításokban.', 'wp-allegro-sync' ) );
 		}
 
 		$response = wp_remote_post( FBAS_Settings::auth_base_url() . '/auth/oauth/device', array(
@@ -88,7 +88,7 @@ class FBAS_Api_Client {
 		$token    = FBAS_Settings::get_token_data();
 
 		if ( empty( $token['refresh_token'] ) ) {
-			return new WP_Error( 'fbas_no_refresh_token', __( 'Nincs mentett Allegro hozzáférés. Kösd össze újra a fiókot a beállításoknál.', 'fb-allegro-sync' ) );
+			return new WP_Error( 'fbas_no_refresh_token', __( 'Nincs mentett Allegro hozzáférés. Kösd össze újra a fiókot a beállításoknál.', 'wp-allegro-sync' ) );
 		}
 
 		$response = wp_remote_post( FBAS_Settings::auth_base_url() . '/auth/oauth/token', array(
@@ -119,7 +119,7 @@ class FBAS_Api_Client {
 		$token = FBAS_Settings::get_token_data();
 
 		if ( empty( $token['access_token'] ) ) {
-			return new WP_Error( 'fbas_not_connected', __( 'A plugin még nincs összekötve az Allegro fiókkal.', 'fb-allegro-sync' ) );
+			return new WP_Error( 'fbas_not_connected', __( 'A plugin még nincs összekötve az Allegro fiókkal.', 'wp-allegro-sync' ) );
 		}
 
 		$expires_in  = isset( $token['expires_in'] ) ? (int) $token['expires_in'] : 43200;
@@ -195,6 +195,45 @@ class FBAS_Api_Client {
 
 	public function delete( $path ) {
 		return $this->request( 'DELETE', $path );
+	}
+
+	/**
+	 * Kép feltöltése egy külső URL-ről az Allegro saját képszerverére.
+	 * Ez KÖTELEZŐ lépés minden ajánlatkép esetén - az Allegro nem fogadja el
+	 * közvetlenül a külső (pl. a mi WordPress oldalunkon tárolt) kép URL-eket,
+	 * "Invalid image URL. Image must be present on allegro server." hibával utasítja el.
+	 *
+	 * @param string $external_url A forrás kép URL-je (pl. WooCommerce termékkép).
+	 * @return string|WP_Error Az Allegro-n tárolt kép URL-je, vagy hiba.
+	 */
+	public function upload_image_from_url( $external_url ) {
+		$token = $this->get_valid_access_token();
+		if ( is_wp_error( $token ) ) {
+			return $token;
+		}
+
+		$response = wp_remote_post( FBAS_Settings::upload_base_url() . '/sale/images', array(
+			'timeout' => 30,
+			'headers' => array(
+				'Authorization' => 'Bearer ' . $token,
+				'Accept'        => 'application/vnd.allegro.public.v1+json',
+				'Content-Type'  => 'application/vnd.allegro.public.v1+json',
+			),
+			'body'    => wp_json_encode( array( 'url' => $external_url ) ),
+		) );
+
+		$result = $this->parse_response( $response );
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		if ( empty( $result['location'] ) ) {
+			FBAS_Logger::log( 'Kép feltöltés: az Allegro nem adott vissza "location" mezőt.', 'error', array( 'raw' => $result, 'source_url' => $external_url ) );
+			return new WP_Error( 'fbas_image_upload_no_location', __( 'Az Allegro nem adott vissza kép URL-t a feltöltés után.', 'wp-allegro-sync' ) );
+		}
+
+		return $result['location'];
 	}
 
 	/* -----------------------------------------------------------

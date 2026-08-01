@@ -32,12 +32,13 @@ class FBAS_Admin {
 
 		// Termék szerkesztő oldalon gyors kapcsoló.
 		add_action( 'add_meta_boxes', array( $this, 'register_product_metabox' ) );
+		add_action( 'save_post_product', array( $this, 'save_product_metabox' ) );
 	}
 
 	public function register_menu() {
 		add_menu_page(
-			__( 'Allegro Sync', 'fb-allegro-sync' ),
-			__( 'Allegro Sync', 'fb-allegro-sync' ),
+			__( 'Allegro Sync', 'wp-allegro-sync' ),
+			__( 'Allegro Sync', 'wp-allegro-sync' ),
 			'manage_woocommerce',
 			'fbas-allegro-sync',
 			array( $this, 'render_settings_page' ),
@@ -47,8 +48,8 @@ class FBAS_Admin {
 
 		add_submenu_page(
 			'fbas-allegro-sync',
-			__( 'Beállítások', 'fb-allegro-sync' ),
-			__( 'Beállítások', 'fb-allegro-sync' ),
+			__( 'Beállítások', 'wp-allegro-sync' ),
+			__( 'Beállítások', 'wp-allegro-sync' ),
 			'manage_woocommerce',
 			'fbas-allegro-sync',
 			array( $this, 'render_settings_page' )
@@ -56,8 +57,8 @@ class FBAS_Admin {
 
 		add_submenu_page(
 			'fbas-allegro-sync',
-			__( 'Termékek', 'fb-allegro-sync' ),
-			__( 'Termékek', 'fb-allegro-sync' ),
+			__( 'Termékek', 'wp-allegro-sync' ),
+			__( 'Termékek', 'wp-allegro-sync' ),
 			'manage_woocommerce',
 			'fbas-allegro-products',
 			array( $this, 'render_products_page' )
@@ -65,8 +66,8 @@ class FBAS_Admin {
 
 		add_submenu_page(
 			'fbas-allegro-sync',
-			__( 'Napló', 'fb-allegro-sync' ),
-			__( 'Napló', 'fb-allegro-sync' ),
+			__( 'Napló', 'wp-allegro-sync' ),
+			__( 'Napló', 'wp-allegro-sync' ),
 			'manage_woocommerce',
 			'fbas-allegro-log',
 			array( $this, 'render_log_page' )
@@ -84,13 +85,13 @@ class FBAS_Admin {
 			'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 			'nonce'   => wp_create_nonce( 'fbas_nonce' ),
 			'i18n'    => array(
-				'connecting'   => __( 'Kapcsolódás…', 'fb-allegro-sync' ),
-				'waiting'      => __( 'Várakozás a jóváhagyásra…', 'fb-allegro-sync' ),
-				'connected'    => __( 'Sikeresen összekötve!', 'fb-allegro-sync' ),
-				'error'        => __( 'Hiba történt.', 'fb-allegro-sync' ),
-				'syncing'      => __( 'Szinkronizálás…', 'fb-allegro-sync' ),
-				'synced'       => __( 'Szinkronizálva.', 'fb-allegro-sync' ),
-				'confirmRemove'=> __( 'Biztosan törlöd az ajánlatot az Allegro-ról?', 'fb-allegro-sync' ),
+				'connecting'   => __( 'Kapcsolódás…', 'wp-allegro-sync' ),
+				'waiting'      => __( 'Várakozás a jóváhagyásra…', 'wp-allegro-sync' ),
+				'connected'    => __( 'Sikeresen összekötve!', 'wp-allegro-sync' ),
+				'error'        => __( 'Hiba történt.', 'wp-allegro-sync' ),
+				'syncing'      => __( 'Szinkronizálás…', 'wp-allegro-sync' ),
+				'synced'       => __( 'Szinkronizálva.', 'wp-allegro-sync' ),
+				'confirmRemove'=> __( 'Biztosan törlöd az ajánlatot az Allegro-ról?', 'wp-allegro-sync' ),
 			),
 		) );
 	}
@@ -110,7 +111,7 @@ class FBAS_Admin {
 
 	public function handle_save_settings() {
 		if ( ! current_user_can( 'manage_woocommerce' ) || ! check_admin_referer( 'fbas_save_settings' ) ) {
-			wp_die( esc_html__( 'Nincs jogosultság.', 'fb-allegro-sync' ) );
+			wp_die( esc_html__( 'Nincs jogosultság.', 'wp-allegro-sync' ) );
 		}
 
 		$data = array(
@@ -125,6 +126,7 @@ class FBAS_Admin {
 			'default_warranty_id'   => sanitize_text_field( $_POST['default_warranty_id'] ?? '' ),
 			'default_return_id'     => sanitize_text_field( $_POST['default_return_id'] ?? '' ),
 			'price_markup_percent'  => is_numeric( $_POST['price_markup_percent'] ?? null ) ? (string) floatval( $_POST['price_markup_percent'] ) : '0',
+			'batch_size'            => max( 1, absint( $_POST['batch_size'] ?? 20 ) ),
 		);
 
 		FBAS_Settings::update( $data );
@@ -179,7 +181,7 @@ class FBAS_Admin {
 	public function register_product_metabox() {
 		add_meta_box(
 			'fbas_product_sync',
-			__( 'Allegro Sync', 'fb-allegro-sync' ),
+			__( 'Allegro Sync', 'wp-allegro-sync' ),
 			array( $this, 'render_product_metabox' ),
 			'product',
 			'side',
@@ -197,18 +199,18 @@ class FBAS_Admin {
 		<p>
 			<label>
 				<input type="checkbox" name="fbas_sync_enabled" value="yes" <?php checked( $enabled ); ?> />
-				<?php esc_html_e( 'Szinkronizálás az Allegro-val', 'fb-allegro-sync' ); ?>
+				<?php esc_html_e( 'Szinkronizálás az Allegro-val', 'wp-allegro-sync' ); ?>
 			</label>
 		</p>
 		<?php if ( $offer_id ) : ?>
-			<p><strong><?php esc_html_e( 'Allegro offer ID:', 'fb-allegro-sync' ); ?></strong> <?php echo esc_html( $offer_id ); ?></p>
+			<p><strong><?php esc_html_e( 'Allegro offer ID:', 'wp-allegro-sync' ); ?></strong> <?php echo esc_html( $offer_id ); ?></p>
 		<?php endif; ?>
 		<?php if ( $last ) : ?>
 			<p>
 				<?php
 				printf(
 					/* translators: 1: dátum, 2: státusz */
-					esc_html__( 'Utolsó szinkron: %1$s (%2$s)', 'fb-allegro-sync' ),
+					esc_html__( 'Utolsó szinkron: %1$s (%2$s)', 'wp-allegro-sync' ),
 					esc_html( $last ),
 					esc_html( $status )
 				);
@@ -216,7 +218,7 @@ class FBAS_Admin {
 			</p>
 		<?php endif; ?>
 		<p class="description">
-			<?php esc_html_e( 'A mentés után, ha automatikus szinkron be van kapcsolva, a plugin frissíti az ajánlatot.', 'fb-allegro-sync' ); ?>
+			<?php esc_html_e( 'A mentés után, ha automatikus szinkron be van kapcsolva, a plugin frissíti az ajánlatot.', 'wp-allegro-sync' ); ?>
 		</p>
 		<?php
 	}
@@ -240,7 +242,7 @@ class FBAS_Admin {
 
 	private function verify_ajax() {
 		if ( ! current_user_can( 'manage_woocommerce' ) || ! check_ajax_referer( 'fbas_nonce', 'nonce', false ) ) {
-			wp_send_json_error( array( 'message' => __( 'Nincs jogosultság.', 'fb-allegro-sync' ) ), 403 );
+			wp_send_json_error( array( 'message' => __( 'Nincs jogosultság.', 'wp-allegro-sync' ) ), 403 );
 		}
 	}
 
@@ -269,7 +271,7 @@ class FBAS_Admin {
 
 		$device_code = get_transient( 'fbas_device_code_' . get_current_user_id() );
 		if ( ! $device_code ) {
-			wp_send_json_error( array( 'message' => __( 'Lejárt a kapcsolódási kísérlet, próbáld újra.', 'fb-allegro-sync' ) ) );
+			wp_send_json_error( array( 'message' => __( 'Lejárt a kapcsolódási kísérlet, próbáld újra.', 'wp-allegro-sync' ) ) );
 		}
 
 		$result = FBAS_Api_Client::instance()->poll_device_token( $device_code );
@@ -296,7 +298,7 @@ class FBAS_Admin {
 	public function ajax_run_sync_now() {
 		$this->verify_ajax();
 		FBAS_Sync::instance()->run_full_sync();
-		wp_send_json_success( array( 'message' => __( 'Szinkron lefutott, részletek a naplóban.', 'fb-allegro-sync' ) ) );
+		wp_send_json_success( array( 'message' => __( 'Szinkron lefutott, részletek a naplóban.', 'wp-allegro-sync' ) ) );
 	}
 
 	public function ajax_toggle_product_sync() {
@@ -306,7 +308,7 @@ class FBAS_Admin {
 		$enabled    = ! empty( $_POST['enabled'] );
 
 		if ( ! $product_id ) {
-			wp_send_json_error( array( 'message' => __( 'Érvénytelen termék.', 'fb-allegro-sync' ) ) );
+			wp_send_json_error( array( 'message' => __( 'Érvénytelen termék.', 'wp-allegro-sync' ) ) );
 		}
 
 		FBAS_Product_Mapper::set_sync_enabled( $product_id, $enabled );
@@ -318,7 +320,7 @@ class FBAS_Admin {
 
 		$product_id = absint( $_POST['product_id'] ?? 0 );
 		if ( ! $product_id ) {
-			wp_send_json_error( array( 'message' => __( 'Érvénytelen termék.', 'fb-allegro-sync' ) ) );
+			wp_send_json_error( array( 'message' => __( 'Érvénytelen termék.', 'wp-allegro-sync' ) ) );
 		}
 
 		$result = FBAS_Sync::instance()->sync_product( $product_id );
@@ -353,12 +355,12 @@ class FBAS_Admin {
 		$this->verify_ajax();
 
 		if ( ! FBAS_Api_Client::instance()->is_connected() ) {
-			wp_send_json_error( array( 'message' => __( 'Először kösd össze a fiókot az Allegro-val.', 'fb-allegro-sync' ) ) );
+			wp_send_json_error( array( 'message' => __( 'Először kösd össze a fiókot az Allegro-val.', 'wp-allegro-sync' ) ) );
 		}
 
 		$query = sanitize_text_field( $_POST['query'] ?? '' );
 		if ( strlen( $query ) < 2 ) {
-			wp_send_json_error( array( 'message' => __( 'Írj be legalább 2 karaktert.', 'fb-allegro-sync' ) ) );
+			wp_send_json_error( array( 'message' => __( 'Írj be legalább 2 karaktert.', 'wp-allegro-sync' ) ) );
 		}
 
 		$result = FBAS_Api_Client::instance()->get( '/sale/matching-categories?name=' . rawurlencode( $query ) );
@@ -409,7 +411,7 @@ class FBAS_Admin {
 		$this->verify_ajax();
 
 		if ( ! FBAS_Api_Client::instance()->is_connected() ) {
-			wp_send_json_error( array( 'message' => __( 'Először kösd össze a fiókot az Allegro-val.', 'fb-allegro-sync' ) ) );
+			wp_send_json_error( array( 'message' => __( 'Először kösd össze a fiókot az Allegro-val.', 'wp-allegro-sync' ) ) );
 		}
 
 		$map = array(
@@ -420,7 +422,7 @@ class FBAS_Admin {
 
 		$type = sanitize_key( $_POST['type'] ?? '' );
 		if ( ! isset( $map[ $type ] ) ) {
-			wp_send_json_error( array( 'message' => __( 'Ismeretlen erőforrás típus.', 'fb-allegro-sync' ) ) );
+			wp_send_json_error( array( 'message' => __( 'Ismeretlen erőforrás típus.', 'wp-allegro-sync' ) ) );
 		}
 
 		$result = FBAS_Api_Client::instance()->get( $map[ $type ]['path'] );
@@ -445,5 +447,3 @@ class FBAS_Admin {
 		wp_send_json_success( array( 'items' => $items ) );
 	}
 }
-
-add_action( 'save_post_product', array( FBAS_Admin::instance(), 'save_product_metabox' ) );

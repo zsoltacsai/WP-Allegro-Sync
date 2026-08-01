@@ -6,26 +6,26 @@ if ( ! defined( 'ABSPATH' ) ) {
 /** @var string $search */
 ?>
 <div class="wrap fbas-wrap">
-	<h1><?php esc_html_e( 'Allegro Sync – Termékek', 'fb-allegro-sync' ); ?></h1>
+	<h1><?php esc_html_e( 'Allegro Sync – Termékek', 'wp-allegro-sync' ); ?></h1>
 
 	<form method="get" class="fbas-search-form">
 		<input type="hidden" name="page" value="fbas-allegro-products" />
 		<p class="search-box">
-			<input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Termék keresése…', 'fb-allegro-sync' ); ?>" />
-			<button class="button"><?php esc_html_e( 'Keresés', 'fb-allegro-sync' ); ?></button>
+			<input type="search" name="s" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Termék keresése…', 'wp-allegro-sync' ); ?>" />
+			<button class="button"><?php esc_html_e( 'Keresés', 'wp-allegro-sync' ); ?></button>
 		</p>
 	</form>
 
 	<table class="wp-list-table widefat fixed striped">
 		<thead>
 			<tr>
-				<th style="width:60px;"><?php esc_html_e( 'Kép', 'fb-allegro-sync' ); ?></th>
-				<th><?php esc_html_e( 'Termék', 'fb-allegro-sync' ); ?></th>
-				<th><?php esc_html_e( 'Ár', 'fb-allegro-sync' ); ?></th>
-				<th><?php esc_html_e( 'Készlet', 'fb-allegro-sync' ); ?></th>
-				<th><?php esc_html_e( 'Szinkron', 'fb-allegro-sync' ); ?></th>
-				<th><?php esc_html_e( 'Allegro státusz', 'fb-allegro-sync' ); ?></th>
-				<th><?php esc_html_e( 'Művelet', 'fb-allegro-sync' ); ?></th>
+				<th style="width:60px;"><?php esc_html_e( 'Kép', 'wp-allegro-sync' ); ?></th>
+				<th><?php esc_html_e( 'Termék', 'wp-allegro-sync' ); ?></th>
+				<th><?php esc_html_e( 'Ár', 'wp-allegro-sync' ); ?></th>
+				<th><?php esc_html_e( 'Készlet', 'wp-allegro-sync' ); ?></th>
+				<th><?php esc_html_e( 'Szinkron', 'wp-allegro-sync' ); ?></th>
+				<th><?php esc_html_e( 'Allegro státusz', 'wp-allegro-sync' ); ?></th>
+				<th><?php esc_html_e( 'Művelet', 'wp-allegro-sync' ); ?></th>
 			</tr>
 		</thead>
 		<tbody>
@@ -65,19 +65,19 @@ if ( ! defined( 'ABSPATH' ) ) {
 									<br /><small class="fbas-error-text"><?php echo esc_html( $error ); ?></small>
 								<?php endif; ?>
 							<?php else : ?>
-								<span class="fbas-badge fbas-badge--muted"><?php esc_html_e( 'Nincs szinkronizálva', 'fb-allegro-sync' ); ?></span>
+								<span class="fbas-badge fbas-badge--muted"><?php esc_html_e( 'Nincs szinkronizálva', 'wp-allegro-sync' ); ?></span>
 							<?php endif; ?>
 						</td>
 						<td>
-							<button type="button" class="button fbas-sync-now-btn"><?php esc_html_e( 'Szinkron most', 'fb-allegro-sync' ); ?></button>
+							<button type="button" class="button fbas-sync-now-btn"><?php esc_html_e( 'Szinkron most', 'wp-allegro-sync' ); ?></button>
 							<?php if ( $offer_id ) : ?>
-								<button type="button" class="button fbas-remove-offer-btn"><?php esc_html_e( 'Törlés Allegro-ról', 'fb-allegro-sync' ); ?></button>
+								<button type="button" class="button fbas-remove-offer-btn"><?php esc_html_e( 'Törlés Allegro-ról', 'wp-allegro-sync' ); ?></button>
 							<?php endif; ?>
 						</td>
 					</tr>
 				<?php endwhile; wp_reset_postdata(); ?>
 			<?php else : ?>
-				<tr><td colspan="7"><?php esc_html_e( 'Nincs találat.', 'fb-allegro-sync' ); ?></td></tr>
+				<tr><td colspan="7"><?php esc_html_e( 'Nincs találat.', 'wp-allegro-sync' ); ?></td></tr>
 			<?php endif; ?>
 		</tbody>
 	</table>

@@ -52,7 +52,13 @@ class FBAS_Sync {
 	}
 
 	/**
-	 * Az összes, szinkronra kijelölt termék végigfuttatása (cron / "Szinkronizálás most" gomb).
+	 * A szinkronra kijelölt termékek végigfuttatása (cron / "Szinkronizálás most" gomb).
+	 *
+	 * Optimalizálás: nem az ÖSSZES kijelölt terméket dolgozza fel egy menetben
+	 * (ami sok termék esetén PHP/HTTP időtúllépéshez vezethet), hanem egy
+	 * kötegben (batch_size beállítás, alapértelmezetten 20) - a legrégebben
+	 * szinkronizált / még soha nem szinkronizált termékeket előnyben részesítve.
+	 * A 15 percenkénti cron így fokozatosan, rotálva dolgozza fel a teljes listát.
 	 */
 	public function run_full_sync() {
 		if ( ! FBAS_Api_Client::instance()->is_connected() ) {
@@ -60,20 +66,63 @@ class FBAS_Sync {
 			return;
 		}
 
-		$product_ids = FBAS_Product_Mapper::get_products_marked_for_sync();
+		$batch_size  = max( 1, (int) FBAS_Settings::get( 'batch_size', 20 ) );
+		$product_ids = FBAS_Product_Mapper::get_products_marked_for_sync( $batch_size );
 
 		if ( empty( $product_ids ) ) {
 			FBAS_Logger::log( 'Nincs szinkronra kijelölt termék.', 'info' );
 			return;
 		}
 
-		FBAS_Logger::log( sprintf( 'Szinkron indul: %d termék.', count( $product_ids ) ), 'info' );
+		FBAS_Logger::log( sprintf( 'Szinkron köteg indul: %d termék (max %d/futás).', count( $product_ids ), $batch_size ), 'info' );
 
 		foreach ( $product_ids as $product_id ) {
 			$this->sync_product( $product_id );
 		}
 
-		FBAS_Logger::log( 'Szinkron befejezve.', 'success' );
+		FBAS_Logger::log( 'Szinkron köteg befejezve.', 'success' );
+	}
+
+	/**
+	 * A termék képeit felölti az Allegro szerverére (ha még nincs feltöltve /
+	 * ha megváltozott a kép URL), és visszaadja az Allegro-n tárolt URL-ek listáját.
+	 * A helyi URL -> Allegro URL párokat postmeta-ban cache-eljük, hogy ne kelljen
+	 * minden szinkronnál újra feltölteni a változatlan képeket.
+	 *
+	 * @return string[]
+	 */
+	private function resolve_image_urls( $product_id, WC_Product $product ) {
+		$local_urls = FBAS_Product_Mapper::get_local_image_urls( $product );
+		$cache      = get_post_meta( $product_id, FBAS_Product_Mapper::META_IMAGE_MAP, true );
+		$cache      = is_array( $cache ) ? $cache : array();
+
+		$client       = FBAS_Api_Client::instance();
+		$hosted_urls  = array();
+		$cache_dirty  = false;
+
+		foreach ( $local_urls as $local_url ) {
+			if ( ! empty( $cache[ $local_url ] ) ) {
+				$hosted_urls[] = $cache[ $local_url ];
+				continue;
+			}
+
+			$uploaded = $client->upload_image_from_url( $local_url );
+
+			if ( is_wp_error( $uploaded ) ) {
+				FBAS_Logger::log( sprintf( 'Kép feltöltés sikertelen (%s): %s', $local_url, $uploaded->get_error_message() ), 'error' );
+				continue; // A hibás képet kihagyjuk, a többivel folytatjuk.
+			}
+
+			$cache[ $local_url ] = $uploaded;
+			$cache_dirty          = true;
+			$hosted_urls[]        = $uploaded;
+		}
+
+		if ( $cache_dirty ) {
+			update_post_meta( $product_id, FBAS_Product_Mapper::META_IMAGE_MAP, $cache );
+		}
+
+		return $hosted_urls;
 	}
 
 	/**
@@ -86,28 +135,37 @@ class FBAS_Sync {
 		$product = wc_get_product( $product_id );
 
 		if ( ! $product ) {
-			return new WP_Error( 'fbas_invalid_product', __( 'Érvénytelen termék.', 'fb-allegro-sync' ) );
+			return new WP_Error( 'fbas_invalid_product', __( 'Érvénytelen termék.', 'wp-allegro-sync' ) );
 		}
 
 		$client   = FBAS_Api_Client::instance();
 		$offer_id = FBAS_Product_Mapper::get_offer_id( $product_id );
 
-		if ( $offer_id ) {
-			if ( $price_stock_only ) {
-				$patch = FBAS_Product_Mapper::build_price_stock_patch( $product );
-				$result = $client->patch( '/sale/offers/' . $offer_id, $patch );
-			} else {
-				$payload = FBAS_Product_Mapper::build_offer_payload( $product );
-				$result  = $client->put( '/sale/offers/' . $offer_id, $payload );
-			}
+		if ( $offer_id && $price_stock_only ) {
+			// Ár/készlet gyorsfrissítéshez nincs szükség a képek újra-feltöltésére.
+			$patch  = FBAS_Product_Mapper::build_price_stock_patch( $product );
+			$result = $client->patch( '/sale/offers/' . $offer_id, $patch );
 		} else {
-			$payload = FBAS_Product_Mapper::build_offer_payload( $product );
-			$result  = $client->post( '/sale/offers', $payload );
+			$hosted_image_urls = $this->resolve_image_urls( $product_id, $product );
 
-			if ( ! is_wp_error( $result ) && ! empty( $result['id'] ) ) {
-				FBAS_Product_Mapper::set_offer_id( $product_id, $result['id'] );
-				$offer_id = $result['id'];
-				$this->publish_offer( $offer_id );
+			if ( empty( $hosted_image_urls ) ) {
+				FBAS_Product_Mapper::mark_synced( $product_id, 'error', __( 'Nincs feltölthető kép a termékhez - az Allegro-nak legalább 1 kép kötelező.', 'wp-allegro-sync' ) );
+				FBAS_Logger::log( sprintf( '"%s" szinkron hiba: nincs kép.', $product->get_name() ), 'error' );
+				return new WP_Error( 'fbas_no_images', __( 'A terméknek nincs (feltölthető) képe, az Allegro-hoz legalább 1 kép kötelező.', 'wp-allegro-sync' ) );
+			}
+
+			$payload = FBAS_Product_Mapper::build_offer_payload( $product, $hosted_image_urls );
+
+			if ( $offer_id ) {
+				$result = $client->put( '/sale/offers/' . $offer_id, $payload );
+			} else {
+				$result = $client->post( '/sale/offers', $payload );
+
+				if ( ! is_wp_error( $result ) && ! empty( $result['id'] ) ) {
+					FBAS_Product_Mapper::set_offer_id( $product_id, $result['id'] );
+					$offer_id = $result['id'];
+					$this->publish_offer( $offer_id );
+				}
 			}
 		}
 
@@ -153,7 +211,7 @@ class FBAS_Sync {
 	public function remove_offer( $product_id ) {
 		$offer_id = FBAS_Product_Mapper::get_offer_id( $product_id );
 		if ( ! $offer_id ) {
-			return new WP_Error( 'fbas_no_offer', __( 'Ehhez a termékhez nincs Allegro ajánlat.', 'fb-allegro-sync' ) );
+			return new WP_Error( 'fbas_no_offer', __( 'Ehhez a termékhez nincs Allegro ajánlat.', 'wp-allegro-sync' ) );
 		}
 
 		$client = FBAS_Api_Client::instance();

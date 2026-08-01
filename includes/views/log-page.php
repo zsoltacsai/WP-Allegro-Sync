@@ -5,14 +5,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 /** @var array $entries */
 ?>
 <div class="wrap fbas-wrap">
-	<h1><?php esc_html_e( 'Allegro Sync – Napló', 'fb-allegro-sync' ); ?></h1>
+	<h1><?php esc_html_e( 'Allegro Sync – Napló', 'wp-allegro-sync' ); ?></h1>
 
 	<table class="wp-list-table widefat fixed striped">
 		<thead>
 			<tr>
-				<th style="width:160px;"><?php esc_html_e( 'Időpont', 'fb-allegro-sync' ); ?></th>
-				<th style="width:100px;"><?php esc_html_e( 'Szint', 'fb-allegro-sync' ); ?></th>
-				<th><?php esc_html_e( 'Üzenet', 'fb-allegro-sync' ); ?></th>
+				<th style="width:160px;"><?php esc_html_e( 'Időpont', 'wp-allegro-sync' ); ?></th>
+				<th style="width:100px;"><?php esc_html_e( 'Szint', 'wp-allegro-sync' ); ?></th>
+				<th><?php esc_html_e( 'Üzenet', 'wp-allegro-sync' ); ?></th>
 			</tr>
 		</thead>
 		<tbody>
@@ -25,7 +25,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 							<?php echo esc_html( $entry['message'] ); ?>
 							<?php if ( ! empty( $entry['context'] ) ) : ?>
 								<details>
-									<summary><?php esc_html_e( 'Nyers válasz (debug)', 'fb-allegro-sync' ); ?></summary>
+									<summary><?php esc_html_e( 'Nyers válasz (debug)', 'wp-allegro-sync' ); ?></summary>
 									<pre class="fbas-raw-context"><?php echo esc_html( wp_json_encode( $entry['context'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE ) ); ?></pre>
 								</details>
 							<?php endif; ?>
@@ -33,7 +33,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 					</tr>
 				<?php endforeach; ?>
 			<?php else : ?>
-				<tr><td colspan="3"><?php esc_html_e( 'Még nincs naplóbejegyzés.', 'fb-allegro-sync' ); ?></td></tr>
+				<tr><td colspan="3"><?php esc_html_e( 'Még nincs naplóbejegyzés.', 'wp-allegro-sync' ); ?></td></tr>
 			<?php endif; ?>
 		</tbody>
 	</table>
