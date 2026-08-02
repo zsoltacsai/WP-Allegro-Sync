@@ -19,6 +19,14 @@ class FBAS_Admin {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_action( 'admin_post_fbas_save_settings', array( $this, 'handle_save_settings' ) );
 
+		// WP Rocket (és hasonló optimalizáló pluginok) néha eltávolítják a
+		// ?ver= lekérdezési karakterláncot a statikus JS/CSS fájlokról, ami
+		// megakadályozza a verzió-alapú cache-bustingunkat: a böngésző/CDN a
+		// verziófrissítés után is a régi fájlt szolgálja ki. Kizárjuk ez alól
+		// a saját admin fájljainkat.
+		add_filter( 'rocket_exclude_js', array( $this, 'exclude_from_rocket_query_string_removal' ) );
+		add_filter( 'rocket_exclude_css', array( $this, 'exclude_from_rocket_query_string_removal' ) );
+
 		add_action( 'wp_ajax_fbas_start_device_auth', array( $this, 'ajax_start_device_auth' ) );
 		add_action( 'wp_ajax_fbas_poll_device_auth', array( $this, 'ajax_poll_device_auth' ) );
 		add_action( 'wp_ajax_fbas_disconnect', array( $this, 'ajax_disconnect' ) );
@@ -29,6 +37,8 @@ class FBAS_Admin {
 
 		add_action( 'wp_ajax_fbas_search_categories', array( $this, 'ajax_search_categories' ) );
 		add_action( 'wp_ajax_fbas_list_account_resource', array( $this, 'ajax_list_account_resource' ) );
+		add_action( 'wp_ajax_fbas_get_category_parameters', array( $this, 'ajax_get_category_parameters' ) );
+		add_action( 'wp_ajax_fbas_save_category_parameter_values', array( $this, 'ajax_save_category_parameter_values' ) );
 
 		// Termék szerkesztő oldalon gyors kapcsoló.
 		add_action( 'add_meta_boxes', array( $this, 'register_product_metabox' ) );
@@ -74,6 +84,18 @@ class FBAS_Admin {
 		);
 	}
 
+	/**
+	 * WP Rocket "statikus erőforrások lekérdezési karakterláncainak
+	 * eltávolítása" funkciójából kizárja a plugin saját admin JS/CSS fájljait,
+	 * hogy a verzió-alapú cache-busting (?ver=...) mindig működjön, és ne
+	 * ragadjon be egy régi, gyorsítótárazott admin.js/admin.css.
+	 */
+	public function exclude_from_rocket_query_string_removal( $excluded ) {
+		$excluded[] = 'wp-content/plugins/WP-Allegro-Sync/assets/admin.js';
+		$excluded[] = 'wp-content/plugins/WP-Allegro-Sync/assets/admin.css';
+		return $excluded;
+	}
+
 	public function enqueue_assets( $hook ) {
 		if ( strpos( $hook, 'fbas-allegro' ) === false && 'post.php' !== $hook && 'post-new.php' !== $hook ) {
 			return;
@@ -82,8 +104,9 @@ class FBAS_Admin {
 		wp_enqueue_style( 'fbas-admin', FBAS_PLUGIN_URL . 'assets/admin.css', array(), FBAS_VERSION );
 		wp_enqueue_script( 'fbas-admin', FBAS_PLUGIN_URL . 'assets/admin.js', array( 'jquery' ), FBAS_VERSION, true );
 		wp_localize_script( 'fbas-admin', 'FBAS', array(
-			'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-			'nonce'   => wp_create_nonce( 'fbas_nonce' ),
+			'ajaxUrl'  => admin_url( 'admin-ajax.php' ),
+			'nonce'    => wp_create_nonce( 'fbas_nonce' ),
+			'version'  => FBAS_VERSION,
 			'i18n'    => array(
 				'connecting'   => __( 'Kapcsolódás…', 'wp-allegro-sync' ),
 				'waiting'      => __( 'Várakozás a jóváhagyásra…', 'wp-allegro-sync' ),
@@ -445,5 +468,99 @@ class FBAS_Admin {
 		}
 
 		wp_send_json_success( array( 'items' => $items ) );
+	}
+
+	/**
+	 * A beállított (vagy explicit megadott) Allegro kategória összes
+	 * paraméterének lekérdezése, a jelenleg elmentett értékekkel együtt -
+	 * ebből épül fel a "Kötelező kategória-paraméterek" kitöltő űrlap.
+	 */
+	public function ajax_get_category_parameters() {
+		$this->verify_ajax();
+
+		if ( ! FBAS_Api_Client::instance()->is_connected() ) {
+			wp_send_json_error( array( 'message' => __( 'Először kösd össze a fiókot az Allegro-val.', 'wp-allegro-sync' ) ) );
+		}
+
+		$category_id = sanitize_text_field( $_POST['category_id'] ?? FBAS_Settings::get( 'offer_category_id' ) );
+		if ( ! $category_id ) {
+			wp_send_json_error( array( 'message' => __( 'Előbb add meg / mentsd el az Allegro kategória ID-t.', 'wp-allegro-sync' ) ) );
+		}
+
+		$params = FBAS_Api_Client::instance()->get_category_parameters( $category_id );
+
+		if ( is_wp_error( $params ) ) {
+			wp_send_json_error( array( 'message' => $params->get_error_message() ) );
+		}
+
+		$saved = FBAS_Settings::get_category_parameter_values();
+		$items = array();
+
+		foreach ( $params as $param ) {
+			$id       = (string) ( $param['id'] ?? '' );
+			$required = ! empty( $param['required'] ) || ! empty( $param['requiredForProduct'] );
+
+			$dictionary = array();
+			if ( ! empty( $param['dictionary'] ) && is_array( $param['dictionary'] ) ) {
+				foreach ( $param['dictionary'] as $dict_item ) {
+					$dictionary[] = array(
+						'id'    => $dict_item['id'] ?? '',
+						'value' => $dict_item['value'] ?? ( $dict_item['id'] ?? '' ),
+					);
+				}
+			}
+
+			$items[] = array(
+				'id'         => $id,
+				'name'       => $param['name'] ?? $id,
+				'required'   => $required,
+				'type'       => $param['type'] ?? 'string',
+				'dictionary' => $dictionary,
+				'saved'      => $saved[ $id ] ?? null,
+			);
+		}
+
+		// Kötelezők előre, hogy azokat lássa elsőnek a felhasználó.
+		usort( $items, function ( $a, $b ) {
+			return (int) $b['required'] - (int) $a['required'];
+		} );
+
+		wp_send_json_success( array( 'items' => $items, 'category_id' => $category_id ) );
+	}
+
+	/**
+	 * A kitöltő űrlapon megadott paraméter-értékek mentése.
+	 */
+	public function ajax_save_category_parameter_values() {
+		$this->verify_ajax();
+
+		$raw = wp_unslash( $_POST['values_json'] ?? '' );
+		$decoded = json_decode( $raw, true );
+
+		if ( ! is_array( $decoded ) ) {
+			wp_send_json_error( array( 'message' => __( 'Érvénytelen adat.', 'wp-allegro-sync' ) ) );
+		}
+
+		$sanitized = array();
+		foreach ( $decoded as $param_id => $data ) {
+			$param_id = sanitize_text_field( $param_id );
+			$entry    = array( 'name' => sanitize_text_field( $data['name'] ?? '' ) );
+
+			if ( ! empty( $data['valuesIds'] ) && is_array( $data['valuesIds'] ) ) {
+				$entry['valuesIds'] = array_map( 'sanitize_text_field', $data['valuesIds'] );
+			}
+			if ( ! empty( $data['values'] ) && is_array( $data['values'] ) ) {
+				$entry['values'] = array_map( 'sanitize_text_field', $data['values'] );
+			}
+
+			// Csak akkor mentjük, ha ténylegesen van kitöltött érték.
+			if ( ! empty( $entry['valuesIds'] ) || ! empty( $entry['values'] ) ) {
+				$sanitized[ $param_id ] = $entry;
+			}
+		}
+
+		FBAS_Settings::save_category_parameter_values( $sanitized );
+
+		wp_send_json_success( array( 'message' => __( 'Paraméterek elmentve.', 'wp-allegro-sync' ) ) );
 	}
 }

@@ -1,6 +1,10 @@
 ( function ( $ ) {
 	'use strict';
 
+	console.log( 'FBAS admin.js betöltve (verzió: ' + ( typeof FBAS !== 'undefined' && FBAS.version ? FBAS.version : '?' ) + ')' );
+
+	$( function () {
+
 	let pollTimer = null;
 
 	function ajax( action, data ) {
@@ -165,6 +169,109 @@
 		} );
 	} );
 
+	/* ---------------- Kötelező kategória-paraméterek ---------------- */
+
+	function renderParamsForm( items ) {
+		const $container = $( '#fbas-params-form' );
+
+		if ( ! items.length ) {
+			$container.html( '<p class="description">Ehhez a kategóriához nem talált paramétert az Allegro.</p>' );
+			return;
+		}
+
+		let html = '<table class="fbas-params-table"><thead><tr>' +
+			'<th>Paraméter</th><th>Érték</th>' +
+			'</tr></thead><tbody>';
+
+		items.forEach( function ( item ) {
+			const tag = item.required
+				? '<span class="fbas-param-required-tag">kötelező</span>'
+				: '<span class="fbas-param-optional-tag">opcionális</span>';
+
+			let field = '';
+
+			if ( item.dictionary && item.dictionary.length ) {
+				const savedIds = ( item.saved && item.saved.valuesIds ) ? item.saved.valuesIds : [];
+				field += '<select class="fbas-param-input" data-param-id="' + item.id + '" data-param-name="' + item.name + '" data-mode="dictionary">';
+				field += '<option value="">— nincs kiválasztva —</option>';
+				item.dictionary.forEach( function ( opt ) {
+					const selected = savedIds.indexOf( opt.id ) !== -1 ? ' selected' : '';
+					field += '<option value="' + opt.id + '"' + selected + '>' + opt.value + '</option>';
+				} );
+				field += '</select>';
+			} else {
+				const savedValue = ( item.saved && item.saved.values && item.saved.values[0] ) ? item.saved.values[0] : '';
+				field += '<input type="text" class="fbas-param-input" data-param-id="' + item.id + '" data-param-name="' + item.name + '" data-mode="text" value="' + $( '<div>' ).text( savedValue ).html() + '" placeholder="Minden termékre azonos érték..." />';
+			}
+
+			html += '<tr class="' + ( item.required ? 'fbas-param--required' : '' ) + '">' +
+				'<td>' + item.name + ' <small>(ID: ' + item.id + ')</small>' + tag + '</td>' +
+				'<td>' + field + '</td>' +
+				'</tr>';
+		} );
+
+		html += '</tbody></table>';
+		html += '<button type="button" class="button button-primary" id="fbas-save-params-btn">Paraméterek mentése</button> ';
+		html += '<span id="fbas-save-params-status" class="description"></span>';
+
+		$container.html( html );
+	}
+
+	$( '#fbas-load-params-btn' ).on( 'click', function () {
+		console.log( 'FBAS: "Kötelező paraméterek lekérdezése" gomb megnyomva.' );
+		const $btn = $( this );
+		$btn.prop( 'disabled', true );
+		$( '#fbas-params-form' ).html( '<p>' + FBAS.i18n.syncing + '</p>' );
+
+		ajax( 'fbas_get_category_parameters', {} ).done( function ( res ) {
+			$btn.prop( 'disabled', false );
+			if ( ! res.success ) {
+				$( '#fbas-params-form' ).html( '<p class="fbas-error-text">' + ( res.data.message || FBAS.i18n.error ) + '</p>' );
+				return;
+			}
+			renderParamsForm( res.data.items );
+		} ).fail( function ( jqXHR ) {
+			$btn.prop( 'disabled', false );
+			$( '#fbas-params-form' ).html( '<p class="fbas-error-text">' + FBAS.i18n.error + ' (HTTP ' + jqXHR.status + ')</p>' );
+		} );
+	} );
+
+	$( document ).on( 'click', '#fbas-save-params-btn', function () {
+		const $btn = $( this );
+		const $status = $( '#fbas-save-params-status' );
+		const values = {};
+
+		$( '.fbas-param-input' ).each( function () {
+			const $el = $( this );
+			const id = $el.data( 'param-id' );
+			const name = $el.data( 'param-name' );
+			const mode = $el.data( 'mode' );
+			const val = $el.val();
+
+			if ( ! val ) {
+				return;
+			}
+
+			values[ id ] = { name: name };
+			if ( 'dictionary' === mode ) {
+				values[ id ].valuesIds = [ val ];
+			} else {
+				values[ id ].values = [ val ];
+			}
+		} );
+
+		$btn.prop( 'disabled', true );
+		$status.text( FBAS.i18n.syncing );
+
+		ajax( 'fbas_save_category_parameter_values', { values_json: JSON.stringify( values ) } ).done( function ( res ) {
+			$btn.prop( 'disabled', false );
+			$status.text( res.success ? ( res.data.message || FBAS.i18n.synced ) : ( res.data.message || FBAS.i18n.error ) );
+		} ).fail( function () {
+			$btn.prop( 'disabled', false );
+			$status.text( FBAS.i18n.error );
+		} );
+	} );
+
 	/* ---------------- Termék lista: kapcsoló, szinkron most, törlés ---------------- */
 
 	$( document ).on( 'change', '.fbas-toggle-sync', function () {
@@ -207,5 +314,7 @@
 			}
 		} );
 	} );
+
+	} ); // document ready vége
 
 } )( jQuery );

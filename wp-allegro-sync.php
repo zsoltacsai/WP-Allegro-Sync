@@ -3,7 +3,7 @@
  * Plugin Name: WP Allegro Sync
  * Plugin URI:  https://fountainbridge.hu
  * Description: WooCommerce termékek szinkronizálása az Allegro piactérrel (Allegro REST API, OAuth2 Device Code Flow). Kiválasztott termékek automatikus feltöltése/frissítése ajánlatként az Allegro-n.
- * Version:     260801
+ * Version:     260801.4
  * Author:      Fountainbridge
  * Author URI:  https://fountainbridge.hu
  * Text Domain: wp-allegro-sync
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Verziózás: dátum alapú, YYMMDD formátum (pl. 260801 = 2026.08.01).
  * Minden éles kiadásnál frissítendő a fejlécben és itt egyaránt.
  */
-define( 'FBAS_VERSION', '260801' );
+define( 'FBAS_VERSION', '260801.4' );
 define( 'FBAS_PLUGIN_FILE', __FILE__ );
 define( 'FBAS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'FBAS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );

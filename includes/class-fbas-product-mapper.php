@@ -205,6 +205,37 @@ class FBAS_Product_Mapper {
 	}
 
 	/**
+	 * A Beállítások oldalon ("Kötelező kategória-paraméterek") kitöltött
+	 * paraméter-értékekből felépíti az Allegro API által várt tömböt:
+	 * [ { "id": "224017", "values": ["1234567890123"] }, ... ]
+	 * vagy szótár (dictionary) típusnál "valuesIds" kulccsal.
+	 *
+	 * @return array
+	 */
+	public static function build_category_parameters_from_settings() {
+		$saved  = FBAS_Settings::get_category_parameter_values();
+		$result = array();
+
+		foreach ( $saved as $param_id => $data ) {
+			$entry = array( 'id' => (string) $param_id );
+
+			if ( ! empty( $data['valuesIds'] ) ) {
+				$entry['valuesIds'] = array_values( array_filter( (array) $data['valuesIds'] ) );
+			}
+			if ( ! empty( $data['values'] ) ) {
+				$entry['values'] = array_values( array_filter( (array) $data['values'] ) );
+			}
+
+			// Csak akkor adjuk hozzá, ha van tényleges kitöltött érték.
+			if ( ! empty( $entry['valuesIds'] ) || ! empty( $entry['values'] ) ) {
+				$result[] = $entry;
+			}
+		}
+
+		return $result;
+	}
+
+	/**
 	 * Allegro "sale/product-offers" POST/PATCH törzs összeállítása a termékből.
 	 *
 	 * FONTOS: 2024 eleje óta a régi `/sale/offers` végpont teljesen le van
@@ -236,12 +267,17 @@ class FBAS_Product_Mapper {
 			$stock_qty = 0;
 		}
 
-		// A termék/katalógus szintű paraméterek (pl. márka, anyag, EAN) - kategóriánként eltérő
-		// kötelező mezők, a `fbas_offer_parameters` szűrőn keresztül bővíthető.
+		// A termék/katalógus szintű paraméterek (pl. márka, anyag, vonalkód/EAN) - kategóriánként eltérő
+		// kötelező mezők. Két forrásból állnak össze:
+		// 1) a Beállítások oldalon kitöltött, kategóriához mentett paraméter-értékek,
+		// 2) a `fbas_offer_parameters` szűrő (programozott, terméktől függő értékekhez).
+		$parameters = self::build_category_parameters_from_settings();
+		$parameters = apply_filters( 'fbas_offer_parameters', $parameters, $product );
+
 		$product_node = array(
 			'name'       => $offer_title,
 			'category'   => array( 'id' => (string) $settings['offer_category_id'] ),
-			'parameters' => apply_filters( 'fbas_offer_parameters', array(), $product ),
+			'parameters' => $parameters,
 			'images'     => $allegro_image_urls,
 		);
 

@@ -63,6 +63,15 @@ Minden éles kiadásnál a `wp-allegro-sync.php` fejlécében és a
   is megkövetel a címben - ha a terméknév ennél rövidebb, érdemes
   hosszabbra átnevezni a terméket.)
 
+- **Nyelv**: a paraméter-nevek és listaértékek (pl. "Rodzaj", "Marka") a
+  WordPress oldal nyelvi beállítása (`get_locale()`) szerint kerülnek
+  lekérdezésre az Allegro API-tól (`Accept-Language` fejléc). Az Allegro
+  jelenleg **csak lengyelt és angolt** támogat kategória-adatokhoz - ha a
+  WP oldal nyelve ettől eltérő (pl. magyar), az Allegro automatikusan
+  **angolra** esik vissza (ez az ő API-juk hivatalos viselkedése, nem a
+  plugin korlátja). Magyar WP-nél tehát angol paraméter-neveket fogsz
+  látni ("Type" / "Brand" stb.), nem lengyelt.
+
 - **API végpont**: a plugin a jelenleg támogatott **`/sale/product-offers`**
   végpontot használja ajánlat létrehozásra/frissítésre. A régi
   `/sale/offers` végpontot az Allegro 2024 eleje óta teljesen letiltotta
@@ -86,32 +95,52 @@ Minden éles kiadásnál a `wp-allegro-sync.php` fejlécében és a
   hibával leáll.
 
 - **Kategória-specifikus paraméterek**: az Allegro minden kategóriához
-  kötelező paramétereket definiál. Kétféle szinten:
-  - **Termék/katalógus szintű** (pl. márka, anyag, EAN) - a
-    `fbas_offer_parameters` szűrőn keresztül:
-    ```php
-    add_filter( 'fbas_offer_parameters', function ( $parameters, $product ) {
-        $parameters[] = array(
-            'id'     => '11323', // pl. "Márka" paraméter ID az adott kategóriában
-            'values' => array( $product->get_attribute( 'márka' ) ),
-        );
-        return $parameters;
-    }, 10, 2 );
-    ```
-  - **Ajánlat szintű** (leggyakrabban "Állapot / Condition", pl. "Új") -
-    a `fbas_offer_state_parameters` szűrőn keresztül:
-    ```php
-    add_filter( 'fbas_offer_state_parameters', function ( $parameters, $product ) {
-        $parameters[] = array(
-            'id'        => '11323', // "Stan" / "Condition" paraméter ID
-            'valuesIds' => array( '11323_1' ), // "Nowy" / "New" érték ID
-        );
-        return $parameters;
-    }, 10, 2 );
-    ```
-  Mindkét paraméter ID és érték ID kategóriánként eltérő - ezeket a
-  kategória adatlapjáról (`GET /sale/categories/{id}/parameters`) tudod
-  lekérdezni.
+  kötelező paramétereket definiál (pl. vonalkód/EAN, márka, anyag) -
+  ezek nélkül az ajánlat létrehozása `422 Unprocessable entity` hibával
+  elutasul. A plugin **Beállítások** oldalán, a "Kötelező
+  kategória-paraméterek" kártyán ("Kötelező paraméterek lekérdezése" gomb)
+  egyből listázhatod és ki is töltheted a beállított kategóriához tartozó
+  összes paramétert (szótár/dictionary típusúaknál legördülő listával,
+  egyébként szövegmezővel) - nem kell kézzel Postmant vagy fejlesztői
+  tudást bevetni hozzá. Ez azokra az értékekre való, amik **minden
+  termékre egyformán** vonatkoznak (pl. "Márka: Fountainbridge").
+
+  Ha egy paraméter **termékenként eltérő** (pl. szín, méret, minta), azt
+  a `fbas_offer_parameters` szűrőn keresztül lehet dinamikusan, a
+  `WC_Product` objektum alapján beállítani a saját `functions.php`-ból
+  vagy egy site-specifikus pluginból:
+  ```php
+  add_filter( 'fbas_offer_parameters', function ( $parameters, $product ) {
+      $parameters[] = array(
+          'id'     => '11323', // pl. "Szín" paraméter ID az adott kategóriában
+          'values' => array( $product->get_attribute( 'szín' ) ),
+      );
+      return $parameters;
+  }, 10, 2 );
+  ```
+  (A Beállítások oldalon mentett és a szűrőből jövő paraméterek
+  összefésülődnek - a szűrő felülírhatja/kiegészítheti a mentett
+  értékeket.)
+
+  Az **ajánlat szintű** paraméterekhez (leggyakrabban "Állapot /
+  Condition", pl. "Új") külön szűrő van, mivel ezek nem a termékhez,
+  hanem magához az ajánlathoz tartoznak:
+  ```php
+  add_filter( 'fbas_offer_state_parameters', function ( $parameters, $product ) {
+      $parameters[] = array(
+          'id'        => '11323', // "Stan" / "Condition" paraméter ID
+          'valuesIds' => array( '11323_1' ), // "Nowy" / "New" érték ID
+      );
+      return $parameters;
+  }, 10, 2 );
+  ```
+
+- **Emberi nyelvű hibaüzenetek**: ha az Allegro egy "hiányzó kötelező
+  paraméterek" típusú hibát ad vissza (nyers paraméter ID-k listájával),
+  a plugin automatikusan lekérdezi és feloldja ezeket a tényleges
+  paraméter-nevekre (pl. "Vonalkód (EAN) (ID: 224017)"), így a
+  **Termékek** oldalon és a **Napló** oldalon is olvasható, mit kell
+  pontosan kitölteni - nem csak a nyers ID-kat kell találgatni.
 
 - Első körben mindenképp **sandbox** környezetben tesztelj
   (https://allegro.pl.allegrosandbox.pl), csak utána válts éles módra.

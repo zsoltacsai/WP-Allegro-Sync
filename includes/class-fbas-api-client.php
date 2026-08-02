@@ -157,9 +157,15 @@ class FBAS_Api_Client {
 		}
 
 		$headers = array_merge( array(
-			'Authorization' => 'Bearer ' . $token,
-			'Accept'        => 'application/vnd.allegro.public.v1+json',
-			'Content-Type'  => 'application/vnd.allegro.public.v1+json',
+			'Authorization'   => 'Bearer ' . $token,
+			'Accept'          => 'application/vnd.allegro.public.v1+json',
+			'Content-Type'    => 'application/vnd.allegro.public.v1+json',
+			// A kategória-/paraméter-nevek és a hibaüzenetek (userMessage) ez
+			// alapján jönnek vissza lefordítva. Az Allegro csak lengyelt és
+			// angolt támogat ehhez - ha a WP oldal nyelve (pl. magyar) nem
+			// támogatott, ők automatikusan angolra esnek vissza (a saját
+			// API doksijuk szerint), szóval nyugodtan mindig a WP nyelvét küldjük.
+			'Accept-Language' => $this->get_accept_language(),
 		), $extra_headers );
 
 		$args = array(
@@ -175,6 +181,18 @@ class FBAS_Api_Client {
 		$response = wp_remote_request( FBAS_Settings::api_base_url() . $path, $args );
 
 		return $this->parse_response( $response );
+	}
+
+	/**
+	 * A WordPress oldal nyelvi beállítását (pl. "hu_HU") alakítja át az
+	 * Allegro API által várt BCP47 formátumra (pl. "hu-HU").
+	 */
+	private function get_accept_language() {
+		$locale = get_locale(); // pl. "hu_HU", "en_US"
+		if ( ! $locale ) {
+			return 'en-US';
+		}
+		return str_replace( '_', '-', $locale );
 	}
 
 	public function get( $path ) {
@@ -195,6 +213,35 @@ class FBAS_Api_Client {
 
 	public function delete( $path ) {
 		return $this->request( 'DELETE', $path );
+	}
+
+	/**
+	 * Egy Allegro kategória összes paraméterének lekérdezése (id, name, required,
+	 * dictionary értékek stb.) - ebből tudjuk feloldani a nyers paraméter ID-kat
+	 * emberileg érthető névre, és ebből építjük fel a kitöltő űrlapot is.
+	 * 1 órás transient cache-eléssel, mivel ez ritkán változik.
+	 *
+	 * @return array|WP_Error
+	 */
+	public function get_category_parameters( $category_id ) {
+		$category_id = (string) $category_id;
+		$cache_key   = 'fbas_cat_params_' . md5( $category_id . FBAS_Settings::api_base_url() );
+		$cached      = get_transient( $cache_key );
+
+		if ( false !== $cached ) {
+			return $cached;
+		}
+
+		$result = $this->get( '/sale/categories/' . rawurlencode( $category_id ) . '/parameters' );
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		$parameters = $result['parameters'] ?? array();
+		set_transient( $cache_key, $parameters, HOUR_IN_SECONDS );
+
+		return $parameters;
 	}
 
 	/**
@@ -259,12 +306,65 @@ class FBAS_Api_Client {
 			return $data;
 		}
 
-		$message = isset( $data['errors'][0]['message'] )
-			? $data['errors'][0]['message']
-			: ( isset( $data['error_description'] ) ? $data['error_description'] : 'Ismeretlen Allegro API hiba (HTTP ' . $code . ')' );
+		$error_entry = $data['errors'][0] ?? array();
+
+		// Az Allegro "userMessage" mezője tartalmazza a ténylegesen hasznos,
+		// olvasható hibaleírást (pl. "Nazwa produktu nie może być dłuższa niż
+		// 75 znaków." vagy a hiányzó paraméterek listája) - ezt részesítjük
+		// előnyben a generikus "message" mezővel szemben (ami gyakran csak
+		// annyi, hogy "Unprocessable entity").
+		$message = ! empty( $error_entry['userMessage'] )
+			? $error_entry['userMessage']
+			: ( $error_entry['message'] ?? ( $data['error_description'] ?? 'Ismeretlen Allegro API hiba (HTTP ' . $code . ')' ) );
+
+		// Ha a hiba a "hiányzó kötelező kategória-paraméterek" mintára illeszkedik,
+		// a nyers paraméter ID-kat emberileg érthető nevekre fordítjuk le.
+		$message = $this->humanize_missing_parameters_error( $message );
 
 		FBAS_Logger::log( 'Allegro API hiba (' . $code . '): ' . $message, 'error', array( 'raw' => $raw ) );
 
 		return new WP_Error( 'fbas_api_error', $message, array( 'status' => $code, 'body' => $data ) );
+	}
+
+	/**
+	 * Az Allegro "Unable to create product without proper values in all
+	 * required parameters: [id1, id2, ...] in category: X" hibaüzenetét
+	 * emberileg érthető, magyar szövegre fordítja - a nyers paraméter ID-kat
+	 * lekérdezi és feloldja a kategória paraméter-neveire.
+	 */
+	private function humanize_missing_parameters_error( $message ) {
+		if ( ! is_string( $message ) || false === strpos( $message, 'required parameters' ) ) {
+			return $message;
+		}
+
+		if ( ! preg_match( '/required parameters:\s*\[([^\]]*)\]\s*in category:\s*([\w-]+)/i', $message, $matches ) ) {
+			return $message;
+		}
+
+		$missing_ids = array_map( 'trim', explode( ',', $matches[1] ) );
+		$category_id = trim( $matches[2] );
+
+		$category_params = $this->get_category_parameters( $category_id );
+
+		$labels = array();
+		foreach ( $missing_ids as $param_id ) {
+			$label = $param_id;
+			if ( ! is_wp_error( $category_params ) ) {
+				foreach ( $category_params as $param ) {
+					if ( (string) ( $param['id'] ?? '' ) === (string) $param_id ) {
+						$label = $param['name'] ?? $param_id;
+						break;
+					}
+				}
+			}
+			$labels[] = sprintf( '%s (ID: %s)', $label, $param_id );
+		}
+
+		return sprintf(
+			/* translators: 1: kategória ID, 2: hiányzó paraméterek listája */
+			__( 'Hiányoznak a kötelező termékparaméterek a(z) %1$s kategóriában: %2$s. Töltsd ki ezeket a plugin "Beállítások" oldalán, a "Kötelező kategória-paraméterek" résznél.', 'wp-allegro-sync' ),
+			$category_id,
+			implode( ', ', $labels )
+		);
 	}
 }

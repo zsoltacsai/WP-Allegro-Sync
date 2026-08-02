@@ -173,5 +173,19 @@ if ( ! defined( 'ABSPATH' ) ) {
 			<span id="fbas-run-sync-status" class="description"></span>
 		</div>
 
+		<div class="fbas-card fbas-card--wide">
+			<h2><?php esc_html_e( '6. Kötelező kategória-paraméterek', 'wp-allegro-sync' ); ?></h2>
+			<p class="description">
+				<?php esc_html_e( 'Sok Allegro kategória kötelezővé tesz bizonyos mezőket (pl. vonalkód/EAN, márka, anyag) - ezek nélkül az ajánlat létrehozása hibával elutasul. Az alábbi gombbal lekérdezheted a beállított kategória kötelező (és opcionális) paramétereit, és itt egyből ki is töltheted azokat az értékeket, amik minden termékre egyformán vonatkoznak (pl. "Márka: Fountainbridge"). Ami termékenként változik (pl. szín, méret), azt a fejlesztőnek kell a `fbas_offer_parameters` szűrőn keresztül dinamikusan beállítania.', 'wp-allegro-sync' ); ?>
+			</p>
+
+			<?php if ( $is_connected ) : ?>
+				<button type="button" class="button" id="fbas-load-params-btn"><?php esc_html_e( 'Kötelező paraméterek lekérdezése', 'wp-allegro-sync' ); ?></button>
+				<div id="fbas-params-form" class="fbas-params-form"></div>
+			<?php else : ?>
+				<p class="fbas-status fbas-status--warn"><?php esc_html_e( 'Előbb kösd össze a fiókot az Allegro-val (lásd fent).', 'wp-allegro-sync' ); ?></p>
+			<?php endif; ?>
+		</div>
+
 	</div>
 </div>

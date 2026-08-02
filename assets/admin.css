@@ -131,8 +131,55 @@
 	color: #646970;
 }
 
+.fbas-wrap .fbas-card--wide {
+	grid-column: 1 / -1;
+}
+
 .fbas-error-text {
 	color: #b32d2e;
+}
+
+.fbas-params-form {
+	margin-top: 16px;
+}
+
+.fbas-params-table {
+	width: 100%;
+	border-collapse: collapse;
+	margin-bottom: 12px;
+}
+
+.fbas-params-table th,
+.fbas-params-table td {
+	text-align: left;
+	padding: 8px 10px;
+	border-bottom: 1px solid #e0e0e0;
+	vertical-align: middle;
+}
+
+.fbas-params-table tr.fbas-param--required td:first-child {
+	font-weight: 600;
+}
+
+.fbas-param-required-tag {
+	color: #b32d2e;
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	margin-left: 6px;
+}
+
+.fbas-param-optional-tag {
+	color: #646970;
+	font-size: 11px;
+	text-transform: uppercase;
+	margin-left: 6px;
+}
+
+.fbas-params-table select,
+.fbas-params-table input[type="text"] {
+	width: 100%;
+	max-width: 320px;
 }
 
 .fbas-raw-context {

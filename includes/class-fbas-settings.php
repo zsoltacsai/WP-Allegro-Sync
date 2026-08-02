@@ -8,8 +8,9 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class FBAS_Settings {
 
-	const OPTION_KEY = 'fbas_settings';
-	const TOKEN_KEY  = 'fbas_oauth_token';
+	const OPTION_KEY  = 'fbas_settings';
+	const TOKEN_KEY   = 'fbas_oauth_token';
+	const PARAM_VALUES_KEY = 'fbas_category_parameter_values';
 
 	/** @var array|null Kérésen belüli cache, hogy ne kelljen újra és újra wp_parse_args-olni. */
 	private static $cache = null;
@@ -92,5 +93,19 @@ class FBAS_Settings {
 	public static function clear_token_data() {
 		delete_option( self::TOKEN_KEY );
 		self::$token_cache = array();
+	}
+
+	/**
+	 * A jelenleg beállított kategória kötelező paramétereihez megadott értékek.
+	 * Formátum: array( param_id => array( 'name' => '...', 'values' => array(...), 'valuesIds' => array(...) ) )
+	 * - 'values' szabadszöveges/számos paraméterhez, 'valuesIds' szótár (dictionary) típusú paraméterhez.
+	 */
+	public static function get_category_parameter_values() {
+		$all = get_option( self::PARAM_VALUES_KEY, array() );
+		return is_array( $all ) ? $all : array();
+	}
+
+	public static function save_category_parameter_values( array $values ) {
+		update_option( self::PARAM_VALUES_KEY, $values );
 	}
 }
