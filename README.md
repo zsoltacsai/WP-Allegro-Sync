@@ -92,7 +92,11 @@ Minden éles kiadásnál a `wp-allegro-sync.php` fejlécében és a
   termékenként cache-eli (postmeta), így egy változatlan képet nem tölt
   fel újra minden szinkronnál - csak akkor, ha a termékkép megváltozik.
   **Legalább 1 kép kötelező** minden termékhez, különben a szinkron
-  hibával leáll.
+  hibával leáll. Ha egy szinkron-kísérlet **sikertelen** (bármilyen okból
+  - hiányzó paraméter, hosszú cím stb.), a plugin automatikusan törli a
+  már feltöltött kép-referenciák cache-ét ehhez a termékhez, hogy a
+  következő próbálkozásnál garantáltan friss (nem esetleg időközben
+  érvénytelenné vált) kép-URL-t küldjön az Allegro-nak.
 
 - **Kategória-specifikus paraméterek**: az Allegro minden kategóriához
   kötelező paramétereket definiál (pl. vonalkód/EAN, márka, anyag) -

@@ -154,6 +154,11 @@ class FBAS_Sync {
 				return new WP_Error( 'fbas_no_images', __( 'A terméknek nincs (feltölthető) képe, az Allegro-hoz legalább 1 kép kötelező.', 'wp-allegro-sync' ) );
 			}
 
+			// Debug: pontosan milyen kép URL-eket próbálunk elküldeni - ha az Allegro
+			// mégis "hiányzó kép" hibát ad, ebből látszik, hogy a mi oldalunkon volt-e
+			// üres a lista, vagy az Allegro utasította el az egyébként elküldött URL-t.
+			FBAS_Logger::log( sprintf( '"%s" szinkron: %d feltöltött kép URL kerül elküldésre.', $product->get_name(), count( $hosted_image_urls ) ), 'info', array( 'image_urls' => $hosted_image_urls ) );
+
 			$payload = FBAS_Product_Mapper::build_offer_payload( $product, $hosted_image_urls );
 
 			if ( $offer_id ) {
@@ -168,6 +173,14 @@ class FBAS_Sync {
 					FBAS_Product_Mapper::set_offer_id( $product_id, $result['id'] );
 					$offer_id = $result['id'];
 				}
+			}
+
+			// Ha a szinkron sikertelen volt, a feltöltött kép-referenciák érvénytelenné
+			// válhattak az Allegro oldalán (pl. mert az ajánlat sosem jött létre) - a
+			// cache-t töröljük, hogy a KÖVETKEZŐ próbálkozás garantáltan friss képet
+			// töltsön fel, ne egy esetleg már lejárt/érvénytelen URL-t használjon újra.
+			if ( is_wp_error( $result ) ) {
+				delete_post_meta( $product_id, FBAS_Product_Mapper::META_IMAGE_MAP );
 			}
 		}
 
